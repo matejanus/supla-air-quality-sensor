@@ -1,3 +1,4 @@
+
 /**
  * Supla.org NodeMCU WiFi minimal example
  * Author: Programistyk - Kamil Kaminski <kamil@programistyk.pl>
@@ -41,22 +42,73 @@ WiFiClient client;
 HM330X sensor;
 u8 buf[30];
 uint32_t last_read_pm25 = 0;
-double last_meas = 0;
+double buf_pm_25 = 0;
+double buf_pm_10 = 0;
 // Setup Supla connection
 const char* ssid     = "coma_mierda";
 const char* password = "KapitanPusheen1";
 
-const char *str[]={"sensor num: ","PM1.0 concentration(CF=1,Standard particulate matter,unit:ug/m3): ",
-                   "PM2.5 concentration(CF=1,Standard particulate matter,unit:ug/m3): ",
-                   "PM10 concentration(CF=1,Standard particulate matter,unit:ug/m3): ",
-                   "PM1.0 concentration(Atmospheric environment,unit:ug/m3): ",
-                   "PM2.5 concentration(Atmospheric environment,unit:ug/m3): ",
-                   "PM10 concentration(Atmospheric environment,unit:ug/m3): ",
-};
+
+u16 get_pm25_AQI(double data)
+{
+  u16 AQI = 0;
+  if (data <= 12)
+  {
+    AQI = (((50 - 0)/(12.0 - 0.0)) * (data - 0.0)) + 0;
+    SERIAL_OUTPUT.print("AQI: ");
+    SERIAL_OUTPUT.print(AQI);
+  }
+  else if (data > 12 && data <= 35.4)
+  {
+    AQI = (((100 - 51)/(35.4-12.1)) * (data - 12.1)) + 51;
+    SERIAL_OUTPUT.print("AQI: ");
+    SERIAL_OUTPUT.print(AQI);
+    SERIAL_OUTPUT.print(" ");
+  }
+  else if (data > 35.4 && data <= 55.4)
+  {
+    AQI = (((150 - 101)/(55.4-35.5)) * (data - 35.5)) + 101;
+    SERIAL_OUTPUT.print("AQI: ");
+    SERIAL_OUTPUT.print(AQI);
+    SERIAL_OUTPUT.print(" ");
+  }
+  else if (data > 55.4 && data <= 150.4)
+  {
+    AQI = (((200 - 151)/(150.4-55.5)) * (data - 55.5)) + 151;
+    SERIAL_OUTPUT.print("AQI: ");
+    SERIAL_OUTPUT.print(AQI);
+    SERIAL_OUTPUT.print(" ");
+  }
+  else if (data > 150.4 && data <= 250.4)
+  {
+    AQI = (((300 - 201)/(250.4-150.5)) * (data - 150.5)) + 201;
+    SERIAL_OUTPUT.print("AQI: ");
+    SERIAL_OUTPUT.print(AQI);
+    SERIAL_OUTPUT.print(" ");
+  }
+  else if (data > 250.4 && data <= 500.4)
+  {
+    AQI = (((500 - 301)/(500.4-250.5)) * (data - 250.5)) + 301;
+    SERIAL_OUTPUT.print("AQI: ");
+    SERIAL_OUTPUT.print(AQI);
+    SERIAL_OUTPUT.print(" ");
+  }
+  return AQI;
+}
+
+u16 get_pm10_AQI(u16 *data)
+{
+  return (u16)data[4*2]<<8|data[4*2+1];
+}
 
 u16 get_pm25(u8 *data)
 {
   return (u16)data[3*2]<<8|data[3*2+1];
+}
+
+u16 get_pm10(u8 *data)
+{
+  return (u16)data[4*2]<<8|data[4*2+1];
 }
 
 HM330XErrorCode print_result(const char* str,u16 value)
@@ -74,8 +126,6 @@ HM330XErrorCode parse_result_value(u8 *data)
         return ERROR_PARAM;
     for(int i=0;i<28;i++)
     {
-//        SERIAL_OUTPUT.print(data[i],HEX);
-//        SERIAL_OUTPUT.print("  ");
         if((0==(i)%5)||(0==i))
         {
             SERIAL_OUTPUT.println(" ");
@@ -90,12 +140,10 @@ HM330XErrorCode parse_result_value(u8 *data)
     {
         SERIAL_OUTPUT.println("wrong checkSum!!!!");
     }
-    SERIAL_OUTPUT.println(" ");
-    SERIAL_OUTPUT.println(" ");
     return NO_ERROR;
 }
 
-double get_distance(int channelNumber, double t) {
+double get_pm25(int channelNumber, double t) {
 
   if (( millis() -last_read_pm25 )<SLEEP_TIME)
   {
@@ -106,20 +154,28 @@ double get_distance(int channelNumber, double t) {
     if(sensor.read_sensor_value(buf,29))
     {
         Serial.println("HM330X read result failed!!!");
-        last_meas = 0;
+        buf_pm_25 = 0;
+        buf_pm_10 = 0;
         last_read_pm25 = millis();
     }
     else{
       parse_result_value(buf);
-      last_meas = get_pm25(buf);
-      SERIAL_OUTPUT.println("callback measure: ");
-      SERIAL_OUTPUT.print(last_meas);
+      buf_pm_25 = get_pm25(buf);
+      buf_pm_10 = get_pm10(buf);
+//      get_pm25_AQI(buf_pm_25);
+      SERIAL_OUTPUT.print("callback measure pm2.5: ");
+      SERIAL_OUTPUT.print(buf_pm_25);
+      SERIAL_OUTPUT.print("callback measure pm10: ");
+      SERIAL_OUTPUT.print(buf_pm_10);
       last_read_pm25 = millis();
     }
   }
-  return last_meas;
+  return buf_pm_25;
   }
 
+double get_pm10(int channelNumber, double t) {
+  return buf_pm_10;
+  }
 
 void setup() {
   Serial.begin(115200);
@@ -132,67 +188,34 @@ void setup() {
       while(1);
   }
 
-
-  // ﻿Replace the falowing GUID
   char GUID[SUPLA_GUID_SIZE] = {0xB0,0xB0,0xB0,0xF3,0xD2,0xDF,0x53,0x09,0x74,0x73,0x9B,0x6C,0x12,0x9B,0xE7,0xBD};
-  // ﻿with GUID that you can retrieve from https://www.supla.org/arduino/get-guid
-
-  // Ethernet MAC address
   uint8_t mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
 
-  /*
-   * Having your device already registered at cloud.supla.org,
-   * you want to change CHANNEL sequence or remove any of them,
-   * then you must also remove the device itself from cloud.supla.org.
-   * Otherwise you will get "Channel conflict!" error.
-   */
     
-  // CHANNEL0 - RELAY
-  SuplaDevice.addRelay(44, true);           // ﻿44 - ﻿Pin number where the relay is connected      
-                                      // Call SuplaDevice.addRelay(44, true) with an extra "true" parameter 
-                                      // to enable "port value inversion"
-                                      // where HIGH == LOW, and LOW == HIGH   
-
-  // CHANNEL1 - RELAY
- // SuplaDevice.addRelay(45, true);           // 45 - ﻿﻿Pin number where the relay is connected   
-
-  // CHANNEL3 - TWO RELAYS (Roller shutter operation)
-  //SuplaDevice.addRollerShutterRelays(46,     // 46 - ﻿﻿Pin number where the 1st relay is connected   
-//                                     47, true);    // 47 - ﻿Pin number where the 2nd relay is connected  
-
-  // CHANNEL4 - Opening sensor (Normal Open)
-  //SuplaDevice.addSensorNO(A0); // A0 - ﻿Pin number where the sensor is connected
-                               // Call SuplaDevice.addSensorNO(A0, true) with an extra "true" parameter
-                               // to enable the internal pull-up resistor
-
-
-  // CHANNEL5 - Opening sensor (Normal Open)
-//  SuplaDevice.addSensorNO(A1); // A1 - ﻿Pin number where the sensor is connected
-
-
-  // CHANNEL6 - DHT22 Sensor
-//   SuplaDevice.addDHT11();
-  // SuplaDevice.addAM2302();
-  // SuplaDevice.addDHT22();
+  SuplaDevice.setDistanceCallback(&get_pm25);
+  SuplaDevice.setTemperatureCallback(&get_pm10);
   
-  SuplaDevice.setDistanceCallback(&get_distance);
   SuplaDevice.addDistanceSensor();
-
+  SuplaDevice.addDS18B20Thermometer();
+  
   SuplaDevice.begin(GUID,              // Global Unique Identifier 
                     mac,               // Ethernet MAC address
                     "svr4.supla.org",  // SUPLA server address
                     2453,                 // Location ID 
                     "e165");               // Location Password
-
+                    
  if(sensor.read_sensor_value(buf,29))
   {
       Serial.println("HM330X read result failed!!!");
   }
   last_read_pm25 = millis();
   parse_result_value(buf);
-  last_meas = get_pm25(buf);
-  SERIAL_OUTPUT.print("first measuer: ");
-  SERIAL_OUTPUT.print(last_meas);
+  buf_pm_25 = get_pm25(buf);
+  buf_pm_10 = get_pm10(buf);
+  SERIAL_OUTPUT.print("first measure pm2.5: ");
+  SERIAL_OUTPUT.print(buf_pm_25);
+  SERIAL_OUTPUT.print("first measure pm10: ");
+  SERIAL_OUTPUT.print(buf_pm_10);
   
 }
 
