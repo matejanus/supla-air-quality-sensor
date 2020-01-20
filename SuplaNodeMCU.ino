@@ -34,6 +34,7 @@ u8 buf[30];
 uint32_t last_read_pm25 = 0;
 double buf_pm_25 = 0;
 double buf_pm_10 = 0;
+double buf_pm_1 = 0;
 // Setup Supla connection
 
 int wificonfig_pin = 0; // D3
@@ -93,6 +94,10 @@ void status_func(int status, const char *msg) {    //    -----------------------
   }              
 }
 
+u16 get_pm1(u8 *data)
+{
+  return (u16)data[2*2]<<8|data[2*2+1];
+}
 
 u16 get_pm25(u8 *data)
 {
@@ -166,6 +171,7 @@ void get_temperature_and_humidity(int channelNumber, double *temp, double *humid
       parse_result_value(buf);
       buf_pm_25 = get_pm25(buf);
       buf_pm_10 = get_pm10(buf);
+      buf_pm_1 = get_pm1(buf);
       *temp = get_norm_from_concentration_pm25(buf_pm_25);
       *humidity = get_norm_from_concentration_pm10(buf_pm_10);
       SERIAL_OUTPUT.print("callback measure pm2.5: ");
@@ -178,6 +184,12 @@ void get_temperature_and_humidity(int channelNumber, double *temp, double *humid
 
 }
   
+double get_pm1_as_temp(int channelNumber, double temp)
+{
+  SERIAL_OUTPUT.print("callback measure pm1.0: ");
+  SERIAL_OUTPUT.print(buf_pm_1);
+  return buf_pm_1;
+}
 
 void setup() {
   wifi_set_sleep_type(NONE_SLEEP_T);
@@ -242,7 +254,11 @@ void setup() {
 //  SuplaDevice.addDistanceSensor();
 //  SuplaDevice.addDS18B20Thermometer();
   SuplaDevice.setTemperatureHumidityCallback(&get_temperature_and_humidity);
+  SuplaDevice.setTemperatureCallback(&get_pm1_as_temp);
+  
   SuplaDevice.addDHT22();  
+  SuplaDevice.addDS18B20Thermometer(); 
+  
   SuplaDevice.setName(Supla_name);
   SuplaDevice.setStatusFuncImpl(&status_func);
   
@@ -254,10 +270,13 @@ void setup() {
   parse_result_value(buf);
   buf_pm_25 = get_pm25(buf);
   buf_pm_10 = get_pm10(buf);
+  buf_pm_1 = get_pm1(buf);
   SERIAL_OUTPUT.print("first measure pm2.5: ");
   SERIAL_OUTPUT.print(buf_pm_25);
   SERIAL_OUTPUT.print("first measure pm10: ");
   SERIAL_OUTPUT.print(buf_pm_10);
+  SERIAL_OUTPUT.print("first measure pm1: ");
+  SERIAL_OUTPUT.print(buf_pm_1);
 
   SuplaDevice.begin(GUID,              // Global Unique Identifier 
                     Supla_server,  // SUPLA server address
